@@ -145,6 +145,7 @@ export default class MainView extends Component {
             analysisTreePosition === treePosition
               ? analysis
               : null,
+          showAnalysis,
           paintMap,
           dimmedStones: ['scoring', 'estimator'].includes(mode)
             ? deadStones
