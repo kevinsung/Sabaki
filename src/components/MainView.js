@@ -134,6 +134,7 @@ export default class MainView extends Component {
 
         h(Goban, {
           gameTree,
+          gameCurrents,
           treePosition,
           board,
           highlightVertices:
