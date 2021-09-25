@@ -358,7 +358,7 @@ export function getBoard(tree, id) {
         type = 'good'
       }
 
-      list[v] = {sign, type}
+      list[v] = {id: node.id, sign, type}
     }
 
     for (let child of node.children) {

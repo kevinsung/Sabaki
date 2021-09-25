@@ -215,6 +215,7 @@ export default class Goban extends Component {
   render(
     {
       gameTree,
+      gameCurrents,
       treePosition,
       board,
       paintMap = [],
@@ -345,9 +346,12 @@ export default class Goban extends Component {
       if (showNextMoves) {
         for (let v in board.childrenInfo) {
           let [x, y] = v.split(',').map(x => +x)
-          let {sign, type} = board.childrenInfo[v]
+          let {sign, type, id} = board.childrenInfo[v]
 
           ghostStoneMap[y][x] = {sign, type: showMoveColorization ? type : null}
+          if (gameTree.onCurrentLine(id, gameCurrents)) {
+            markerMap[y][x] = {type: 'circle'}
+          }
         }
       }
     }
