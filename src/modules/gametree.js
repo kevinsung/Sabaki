@@ -6,6 +6,8 @@ import {
   parseCompressedVertices,
 } from '@sabaki/sgf'
 import {getId} from './utils.js'
+import HexBoard from './hexboard.js'
+import {getGameType, GO, HEX} from './gametype.js'
 
 const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -75,11 +77,20 @@ export function getGameInfo(tree) {
     komi,
     handicap,
     size,
+    gameType: getGameType(tree),
   }
 }
 
 export function setGameInfo(tree, data) {
   let newTree = tree.mutate((draft) => {
+    if ('gameType' in data) {
+      // Update game type
+
+      draft.updateProperty(draft.root.id, 'GM', [
+        data.gameType === 'hex' ? HEX : GO,
+      ])
+    }
+
     if ('size' in data) {
       // Update board size
 
@@ -122,6 +133,14 @@ export function setGameInfo(tree, data) {
         if (key === 'komi') {
           if (isNaN(value)) value = 0
         } else if (key === 'handicap') {
+          // Hex has no notion of handicap stones
+
+          if (getGameType(newTree) !== 'go') {
+            draft.removeProperty(draft.root.id, props[key])
+            draft.removeProperty(draft.root.id, 'AB')
+            continue
+          }
+
           let board = getBoard(newTree, newTree.root.id)
           let stones = board.getHandicapPlacement(+value)
 
@@ -225,7 +244,10 @@ export function getBoard(tree, id) {
       size = size.map((x) => (isNaN(x) ? 19 : +x))
     }
 
-    board = fromDimensions(...size)
+    board =
+      getGameType(tree) === 'hex'
+        ? HexBoard.fromDimensions(...size)
+        : fromDimensions(...size)
   }
 
   let inner = (tree, id, baseboard) => {
@@ -277,6 +299,27 @@ export function getBoard(tree, id) {
     if (vertex != null && board.has(vertex)) {
       let [x, y] = vertex
       board.markers[y][x] = {type: 'point'}
+    }
+
+    if (board instanceof HexBoard) {
+      for (let [x, y] of board.getWinningChain()) {
+        // keep the last-move marker on the most recent stone
+        if (board.markers[y][x] != null && board.markers[y][x].type === 'point')
+          continue
+
+        board.markers[y][x] = {type: 'circle'}
+      }
+
+      // mark Black's opening stone with "S" while the swap (pie) rule is
+      // still available, so White can swap by clicking it
+      if (node.children.length === 0 && board.isSquare()) {
+        let openingVertex = board.getOpeningVertex()
+
+        if (openingVertex != null) {
+          let [ox, oy] = openingVertex
+          board.markers[oy][ox] = {type: 'label', label: 'S'}
+        }
+      }
     }
 
     propData = {CR: 'circle', MA: 'cross', SQ: 'square', TR: 'triangle'}
@@ -378,6 +421,8 @@ export function getBoard(tree, id) {
   for (let id of treePositions) {
     board = inner(tree, id, board)
   }
+
+  board.gameType = getGameType(tree)
 
   return board
 }

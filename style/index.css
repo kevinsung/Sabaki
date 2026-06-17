@@ -1,4 +1,5 @@
 @import url('../node_modules/@sabaki/shudan/css/goban.css');
+@import url('../node_modules/shudanhex/css/hex.css');
 
 #mainlayout {
   position: absolute;
@@ -735,8 +736,15 @@ header {
 }
 
 #info section {
+    position: relative;
     text-align: center;
     margin-bottom: 20px;
+  }
+  #info section select.game-type {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
   }
   #info section .current-player {
     margin: 0 10px;
@@ -770,6 +778,10 @@ header {
     column-count: 2;
     -webkit-column-count: 2;
     -moz-column-count: 2;
+  }
+  #info ul li.column-break {
+    break-after: column;
+    -webkit-column-break-after: always;
   }
   #info ul input[type="text"] {
     width: calc(100% - 6em - 40px);

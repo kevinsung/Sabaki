@@ -9,8 +9,8 @@
 // ten-thousandths, e.g. `winrate 5213`.) This module turns one such line into an
 // array of variations. It is deliberately free of Electron and app-state
 // dependencies so it can be unit-tested directly against recorded engine
-// transcripts; the only collaborator is a `@sabaki/go-board` board, used for its
-// pure `parseVertex` coordinate helper.
+// transcripts; the only collaborator is a board (a `@sabaki/go-board` board or a
+// HexBoard), used for its pure `parseVertex` coordinate helper.
 //
 // `winrateFormat` (optional) is the known winrate dialect: 'float' for
 // kata-analyze (a probability in [0,1]) or 'integer' for the Leela-Zero dialect

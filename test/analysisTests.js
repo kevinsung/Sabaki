@@ -4,6 +4,7 @@ import {join} from 'path'
 import {fromDimensions as newBoard} from '@sabaki/go-board'
 
 import {parseAnalysis, getAnalysisHeatMapCell} from '../src/modules/analysis.js'
+import HexBoard from '../src/modules/hexboard.js'
 
 // These tests verify the GTP analysis parser (the SBKV / scoreLead extraction
 // path) against GOLDEN TRANSCRIPTS  (real `info ...` lines recorded from real
@@ -211,6 +212,31 @@ describe('parseAnalysis (parser logic)', () => {
       parseAnalysis('info move Q16 visits 10 pv Q16', board),
       [],
     )
+  })
+})
+
+// Hex numbers rows with row 1 at the top, the opposite of Go's row 1 at the
+// bottom (see HexBoard.parseVertex). The analysis heatmap relies on
+// parseAnalysis honoring whichever board it's given, rather than assuming Go.
+describe('parseAnalysis (board row convention)', () => {
+  const line = 'info move A1 visits 10 winrate 0.6 pv A1 A2'
+
+  it('parses A1 as the top-left vertex on a HexBoard', () => {
+    let board = HexBoard.fromDimensions(11)
+    let [v] = parseAnalysis(line, board)
+
+    assert.deepStrictEqual(v.vertex, [0, 0])
+    assert.deepStrictEqual(v.moves, [
+      [0, 0],
+      [0, 1],
+    ])
+  })
+
+  it('parses A1 as the bottom-left vertex on a Go board', () => {
+    let board = newBoard(11, 11)
+    let [v] = parseAnalysis(line, board)
+
+    assert.deepStrictEqual(v.vertex, [0, 10])
   })
 })
 

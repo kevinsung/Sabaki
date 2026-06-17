@@ -143,7 +143,8 @@ export default class ThemeManager extends Component {
         'style',
         {},
         blackStonePath != null &&
-          `.shudan-stone-image.shudan-sign_1 {
+          `.shudan-stone-image.shudan-sign_1,
+                .shudanhex-stone-image.shudanhex-sign_1 {
                     background-image: url('${blackStonePath.replace(
                       /\\/g,
                       '/',
@@ -151,10 +152,14 @@ export default class ThemeManager extends Component {
                 } .shudan-goban {
                     --shudan-black-background-color: ${blackStoneBackground};
                     --shudan-black-foreground-color: ${blackStoneForeground};
+                } .shudanhex-board {
+                    --shudanhex-black-background-color: ${blackStoneBackground};
+                    --shudanhex-black-foreground-color: ${blackStoneForeground};
                 }`,
 
         whiteStonePath != null &&
-          `.shudan-stone-image.shudan-sign_-1 {
+          `.shudan-stone-image.shudan-sign_-1,
+                .shudanhex-stone-image.shudanhex-sign_-1 {
                     background-image: url('${whiteStonePath.replace(
                       /\\/g,
                       '/',
@@ -162,15 +167,23 @@ export default class ThemeManager extends Component {
                 } .shudan-goban {
                     --shudan-white-background-color: ${whiteStoneBackground};
                     --shudan-white-foreground-color: ${whiteStoneForeground};
+                } .shudanhex-board {
+                    --shudanhex-white-background-color: ${whiteStoneBackground};
+                    --shudanhex-white-foreground-color: ${whiteStoneForeground};
                 }`,
 
         boardPath != null &&
-          `.shudan-goban-image {
+          `.shudan-goban-image,
+                .shudanhex-board-image {
                     background-image: url('${boardPath.replace(/\\/g, '/')}');
                 } .shudan-goban {
                     --shudan-board-background-color: ${boardBackground};
                     --shudan-board-border-color: rgba(33, 24, 9, .2);
                     --shudan-board-foreground-color: rgba(33, 24, 9, 1);
+                } .shudanhex-board {
+                    --shudanhex-board-background-color: ${boardBackground};
+                    --shudanhex-board-border-color: rgba(33, 24, 9, .2);
+                    --shudanhex-board-foreground-color: rgba(33, 24, 9, 1);
                 }`,
 
         backgroundPath != null &&

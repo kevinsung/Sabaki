@@ -84,5 +84,6 @@ module.exports = defineConfig({
       testMatch: /heatmap-label-font\.spec\.js/,
       dependencies: ['smoke'],
     },
+    {name: 'hex', testMatch: /hex\.spec\.js/, dependencies: ['smoke']},
   ],
 })

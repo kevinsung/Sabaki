@@ -44,6 +44,7 @@ exports.get = function (props = {}) {
     showCommentBox,
     showLeftSidebar,
     engineGameOngoing,
+    isHexGame,
   } = props
 
   let data = [
@@ -154,6 +155,8 @@ exports.get = function (props = {}) {
         {
           label: i18n.t('menu.play', '&Pass'),
           accelerator: 'CmdOrCtrl+P',
+          visible: !isHexGame,
+          enabled: !isHexGame,
           click: () => sabaki.makePass(),
         },
         {

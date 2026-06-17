@@ -18,12 +18,12 @@ const t = i18n.context('InfoDrawer')
 const setting = {get: (key) => window.sabaki.setting.get(key)}
 
 class InfoDrawerItem extends Component {
-  render({title, children}) {
+  render({title, class: className, children}) {
     children = toChildArray(children)
 
     return h(
       'li',
-      {},
+      {class: className},
       h('label', {}, h('span', {}, title + ':'), children[0]),
       children.slice(1),
     )
@@ -49,6 +49,7 @@ export default class InfoDrawer extends Component {
       komi: null,
       handicap: 0,
       size: [null, null],
+      gameType: 'go',
     }
 
     this.handleSubmitButtonClick = async (evt) => {
@@ -78,6 +79,7 @@ export default class InfoDrawer extends Component {
       }, {})
 
       if (emptyTree) {
+        data.gameType = this.state.gameType
         data.handicap = this.state.handicap
         data.size = this.state.size
       }
@@ -134,6 +136,25 @@ export default class InfoDrawer extends Component {
 
     this.handleSizeSwapButtonClick = () => {
       this.setState(({size}) => ({size: size.reverse()}))
+    }
+
+    this.handleGameTypeChange = (evt) => {
+      let gameType = evt.currentTarget.value
+
+      this.setState(({size, gameType: prevGameType}) => {
+        if (gameType === 'hex' && prevGameType !== 'hex') {
+          // Reset to the last remembered Hex board size when switching into
+          // Hex from Go
+          let hexSize = setting
+            .get('game.default_hex_board_size')
+            .toString()
+            .split(':')
+            .map((x) => +x)
+          size = [hexSize[0], hexSize.slice(-1)[0]]
+        }
+
+        return {gameType, size}
+      })
     }
 
     this.handleSwapPlayers = () => {
@@ -424,6 +445,7 @@ export default class InfoDrawer extends Component {
       komi,
       handicap,
       size,
+      gameType,
     },
   ) {
     let emptyTree = gameTree.root.children.length === 0
@@ -441,6 +463,19 @@ export default class InfoDrawer extends Component {
         h(
           'section',
           {},
+          h(
+            'select',
+            {
+              class: 'game-type',
+              value: gameType,
+              disabled: !emptyTree,
+              onChange: this.handleGameTypeChange,
+            },
+
+            h('option', {value: 'go'}, t('Go')),
+            h('option', {value: 'hex'}, t('Hex')),
+          ),
+
           h(
             'span',
             {},
@@ -551,7 +586,7 @@ export default class InfoDrawer extends Component {
           ),
           h(
             InfoDrawerItem,
-            {title: t('Comment')},
+            {title: t('Comment'), class: 'column-break'},
             h('input', {
               type: 'text',
               placeholder: t('None'),
@@ -578,48 +613,11 @@ export default class InfoDrawer extends Component {
                   t('Show'),
                 ),
           ),
-          h(
-            InfoDrawerItem,
-            {title: t('Komi')},
-            h('input', {
-              type: 'number',
-              name: 'komi',
-              step: 0.5,
-              placeholder: 0,
-              value: komi == null ? '' : komi,
-              onInput: this.handleInputChange.komi,
-            }),
-          ),
-          h(
-            InfoDrawerItem,
-            {title: t('Handicap')},
-            h(
-              'select',
-              {
-                selectedIndex: Math.max(0, handicap - 1),
-                disabled: !emptyTree,
-                onChange: this.handleInputChange.handicap,
-              },
-
-              h('option', {value: 0}, t('No stones')),
-              [...Array(8)].map((_, i) =>
-                h(
-                  'option',
-                  {value: i + 2},
-                  t((p) => `${p.stones} stones`, {
-                    stones: i + 2,
-                  }),
-                ),
-              ),
-            ),
-          ),
-          h(
-            InfoDrawerItem,
-            {title: t('Board Size')},
+          h(InfoDrawerItem, {title: t('Board Size')}, [
             h('input', {
               type: 'number',
               name: 'size-width',
-              placeholder: 19,
+              placeholder: gameType === 'hex' ? 11 : 19,
               max: 25,
               min: 2,
               value: size[0],
@@ -643,14 +641,51 @@ export default class InfoDrawer extends Component {
             h('input', {
               type: 'number',
               name: 'size-height',
-              placeholder: 19,
+              placeholder: gameType === 'hex' ? 11 : 19,
               max: 25,
               min: 3,
               value: size[1],
               disabled: !emptyTree,
               onInput: this.handleBoardHeightChange,
             }),
-          ),
+          ]),
+          gameType !== 'hex' &&
+            h(
+              InfoDrawerItem,
+              {title: t('Komi')},
+              h('input', {
+                type: 'number',
+                name: 'komi',
+                step: 0.5,
+                placeholder: 0,
+                value: komi == null ? '' : komi,
+                onInput: this.handleInputChange.komi,
+              }),
+            ),
+          gameType !== 'hex' &&
+            h(
+              InfoDrawerItem,
+              {title: t('Handicap')},
+              h(
+                'select',
+                {
+                  selectedIndex: Math.max(0, handicap - 1),
+                  disabled: !emptyTree,
+                  onChange: this.handleInputChange.handicap,
+                },
+
+                h('option', {value: 0}, t('No stones')),
+                [...Array(8)].map((_, i) =>
+                  h(
+                    'option',
+                    {value: i + 2},
+                    t((p) => `${p.stones} stones`, {
+                      stones: i + 2,
+                    }),
+                  ),
+                ),
+              ),
+            ),
         ),
 
         h(

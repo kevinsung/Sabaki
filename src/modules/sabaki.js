@@ -15,6 +15,8 @@ import EngineSyncer from './enginesyncer.js'
 import * as dialog from './dialog.js'
 import * as fileformats from './fileformats/index.js'
 import * as gametree from './gametree.js'
+import * as gametype from './gametype.js'
+import HexBoard from './hexboard.js'
 import * as gobantransformer from './gobantransformer.js'
 import * as gtplogger from './gtplogger.js'
 import * as helper from './helper.js'
@@ -511,17 +513,32 @@ class Sabaki extends EventEmitter {
   // File Management
 
   getEmptyGameTree() {
-    let handicap = setting.get('game.default_handicap')
-    let size = setting
-      .get('game.default_board_size')
-      .toString()
-      .split(':')
-      .map((x) => +x)
-    let [width, height] = [size[0], size.slice(-1)[0]]
-    let handicapStones = Board.fromDimensions(width, height)
-      .getHandicapPlacement(handicap)
-      .map(sgf.stringifyVertex)
+    let isHex = setting.get('game.default_game_type') === 'hex'
+    let handicap = 0
+    let size
+    let handicapStones = []
 
+    if (isHex) {
+      size = setting
+        .get('game.default_hex_board_size')
+        .toString()
+        .split(':')
+        .map((x) => +x)
+      size = [size[0], size.slice(-1)[0]]
+    } else {
+      handicap = setting.get('game.default_handicap')
+      size = setting
+        .get('game.default_board_size')
+        .toString()
+        .split(':')
+        .map((x) => +x)
+      size = [size[0], size.slice(-1)[0]]
+      handicapStones = Board.fromDimensions(...size)
+        .getHandicapPlacement(handicap)
+        .map(sgf.stringifyVertex)
+    }
+
+    let [width, height] = size
     let sizeInfo = width === height ? width.toString() : `${width}:${height}`
     let date = new Date()
     let dateInfo = sgf.stringifyDates([
@@ -530,13 +547,18 @@ class Sabaki extends EventEmitter {
 
     return gametree.new().mutate((draft) => {
       let rootData = {
-        GM: ['1'],
+        GM: [isHex ? gametype.HEX : gametype.GO],
         FF: ['4'],
         CA: ['UTF-8'],
         AP: [`${this.appName}:${this.version}`],
-        KM: [setting.get('game.default_komi')],
         SZ: [sizeInfo],
         DT: [dateInfo],
+      }
+
+      // Hex has no notion of komi
+
+      if (!isHex) {
+        rootData.KM = [setting.get('game.default_komi')]
       }
 
       if (handicapStones.length > 0) {
@@ -959,6 +981,11 @@ class Sabaki extends EventEmitter {
             generateEngineMove: this.state.engineGameOngoing == null,
           })
         } else if (
+          this.canSwapHex() &&
+          helper.vertexEquals(vertex, board.getOpeningVertex())
+        ) {
+          this.swapHex()
+        } else if (
           board.markers[vy][vx] != null &&
           board.markers[vy][vx].type === 'point' &&
           setting.get('edit.click_currentvertex_to_remove')
@@ -1206,6 +1233,8 @@ class Sabaki extends EventEmitter {
       vertex,
     )
     if (!pass && overwrite) return
+    if (pass && board.gameType === 'hex') return // Hex has no pass
+    if (board.gameType === 'hex' && board.getWinner() !== 0) return // Game already won
 
     let prev = tree.get(node.parentId)
     let color = player > 0 ? 'B' : 'W'
@@ -1252,11 +1281,22 @@ class Sabaki extends EventEmitter {
 
     // Update data
 
+    let hexWinner = 0
     let nextTreePosition
     let newTree = tree.mutate((draft) => {
       nextTreePosition = draft.appendNode(treePosition, {
         [color]: [sgf.stringifyVertex(vertex)],
       })
+
+      if (!pass && board.gameType === 'hex') {
+        hexWinner = board.makeMove(player, vertex).getWinner()
+
+        if (hexWinner !== 0) {
+          draft.updateProperty(draft.root.id, 'RE', [
+            hexWinner > 0 ? 'B+' : 'W+',
+          ])
+        }
+      }
     })
 
     let createNode = tree.get(nextTreePosition) == null
@@ -1291,9 +1331,21 @@ class Sabaki extends EventEmitter {
 
     this.events.emit('moveMake', {pass, capturing, suicide, ko, enterScoring})
 
+    // Announce Hex win
+
+    if (hexWinner !== 0) {
+      let winnerName = hexWinner > 0 ? t('Black') : t('White')
+
+      await dialog.showMessageBox(
+        t((p) => `${p.winner} has connected their edges and wins the game!`, {
+          winner: winnerName,
+        }),
+      )
+    }
+
     // Generate move
 
-    if (generateEngineMove && !enterScoring) {
+    if (generateEngineMove && !enterScoring && hexWinner === 0) {
       this.generateMove(
         player > 0
           ? this.state.whiteEngineSyncerId
@@ -1309,6 +1361,61 @@ class Sabaki extends EventEmitter {
     this.makeMove([-1, -1], {
       generateEngineMove: this.state.engineGameOngoing == null,
     })
+  }
+  
+  // Hex's swap (pie) rule: rather than a true color swap, White's "swap"
+  // is encoded as the diagonal reflection of Black's opening move
+  // ([x,y] -> [y,x]), recoloring Black's stone to White in the process.
+  // This is strategically equivalent, requires no SGF extension, and
+  // round-trips as an ordinary move plus a setup property. The reflection
+  // is only a symmetry of the board when it's square, so swap isn't offered
+  // on rectangular boards.
+  canSwapHex(treePosition = this.state.treePosition) {
+    let {gameTrees, gameIndex} = this.state
+    let tree = gameTrees[gameIndex]
+    let node = tree.get(treePosition)
+    if (node == null || node.children.length > 0) return false
+
+    let board = gametree.getBoard(tree, treePosition)
+    if (board.gameType !== 'hex') return false
+    if (!board.isSquare()) return false
+
+    return board.getOpeningVertex() != null
+  }
+
+  async swapHex() {
+    if (!this.canSwapHex()) return
+
+    let {gameTrees, gameIndex, treePosition} = this.state
+    let tree = gameTrees[gameIndex]
+    let board = gametree.getBoard(tree, treePosition)
+    let [x, y] = board.getOpeningVertex()
+    let reflected = [y, x]
+
+    let nodeData = {W: [sgf.stringifyVertex(reflected)]}
+    if (!helper.vertexEquals(reflected, [x, y])) {
+      nodeData.AE = [sgf.stringifyVertex([x, y])]
+    }
+
+    let nextTreePosition
+    let newTree = tree.mutate((draft) => {
+      nextTreePosition = draft.appendNode(treePosition, nodeData)
+    })
+
+    this.setCurrentTreePosition(newTree, nextTreePosition)
+
+    sound.playPachi()
+    this.events.emit('moveMake', {
+      pass: false,
+      capturing: false,
+      suicide: false,
+      ko: false,
+      enterScoring: false,
+    })
+
+    if (this.state.engineGameOngoing == null) {
+      this.generateMove(this.state.blackEngineSyncerId, nextTreePosition)
+    }
   }
 
   makeResign({player = null} = {}) {
@@ -2400,8 +2507,17 @@ class Sabaki extends EventEmitter {
   setGameInfo(data) {
     let newTree = gametree.setGameInfo(this.inferredState.gameTree, data)
 
+    if (data.gameType) {
+      setting.set('game.default_game_type', data.gameType)
+    }
+
     if (data.size) {
-      setting.set('game.default_board_size', data.size.join(':'))
+      setting.set(
+        data.gameType === 'hex'
+          ? 'game.default_hex_board_size'
+          : 'game.default_board_size',
+        data.size.join(':'),
+      )
     }
 
     if (data.komi && data.komi.toString() !== '') {

@@ -12,6 +12,7 @@ import i18n from '../i18n.js'
 import {getBoard, getRootProperty} from './gametree.js'
 import {noop, equals} from './helper.js'
 import {parseAnalysis} from './analysis.js'
+import HexBoard from './hexboard.js'
 
 const t = i18n.context('EngineSyncer')
 const setting = {
@@ -45,6 +46,7 @@ export default class EngineSyncer extends EventEmitter {
     this.engine = engine
     this.commands = []
     this.treePosition = null
+    this.gameType = null
 
     let absolutePath = resolve(path)
     let executePath = existsSync(absolutePath) ? absolutePath : path
@@ -108,7 +110,10 @@ export default class EngineSyncer extends EventEmitter {
 
           let sign = command.args[0].toUpperCase() === 'W' ? -1 : 1
           let boardsize = this.stateTracker.state.boardsize || [19, 19]
-          let board = newBoard(...boardsize)
+          let board =
+            this.gameType === 'hex'
+              ? HexBoard.fromDimensions(...boardsize)
+              : newBoard(...boardsize)
           // kata-analyze reports a float winrate; lz-analyze/analyze report an
           // integer in ten-thousandths.
           let winrateFormat = command.name.startsWith('kata')
@@ -237,6 +242,7 @@ export default class EngineSyncer extends EventEmitter {
   async sync(tree, id) {
     this.sendAbort()
     let board = getBoard(tree, id)
+    this.gameType = board.gameType
 
     if (!board.isValid()) {
       throw new Error(t('GTP engines don’t support invalid board positions.'))

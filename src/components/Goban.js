@@ -2,6 +2,7 @@ import {h, Component} from 'preact'
 import classNames from 'classnames'
 import sgf from '@sabaki/sgf'
 import {BoundedGoban} from '@sabaki/shudan'
+import {BoundedHex} from 'shudanhex'
 
 import i18n from '../i18n.js'
 import {getAnalysisHeatMapCell} from '../modules/analysis.js'
@@ -272,6 +273,11 @@ export default class Goban extends Component {
     // Calculate coordinates
 
     let getCoordFunctions = (coordinatesType) => {
+      // Hex rows are numbered with row 1 at the top, the opposite of Go's
+      // row 1 at the bottom, matching HexBoard's stringifyVertex/parseVertex.
+      let rowNumber = (y) =>
+        board.gameType === 'hex' ? y + 1 : board.height - y
+
       if (coordinatesType === '1-1') {
         return [(x) => x + 1, (y) => y + 1]
       } else if (coordinatesType === 'relative') {
@@ -287,10 +293,10 @@ export default class Goban extends Component {
 
         return [
           (x) => relativeCoord(x + 1, board.width),
-          (y) => relativeCoord(board.height - y, board.height),
+          (y) => relativeCoord(rowNumber(y), board.height),
         ]
       } else {
-        return [(x) => alpha[x], (y) => board.height - y] // Default
+        return [(x) => alpha[x], rowNumber] // Default
       }
     }
 
@@ -461,7 +467,9 @@ export default class Goban extends Component {
       }
     }
 
-    return h(BoundedGoban, {
+    let BoardComponent = board.gameType === 'hex' ? BoundedHex : BoundedGoban
+
+    return h(BoardComponent, {
       id: 'goban',
       class: classNames({crosshair}),
       style: {top, left},

@@ -342,6 +342,9 @@ class App extends Component {
       }
     }
 
+    let isHexGame =
+      gametree.getBoard(tree, state.treePosition).gameType === 'hex'
+
     state = {...state, ...inferredState, scoreBoard, areaMap}
 
     return h(
@@ -373,6 +376,7 @@ class App extends Component {
         showCommentBox: state.showCommentBox,
         showLeftSidebar: state.showLeftSidebar,
         engineGameOngoing: state.engineGameOngoing,
+        isHexGame,
       }),
 
       h(TripleSplitContainer, {
