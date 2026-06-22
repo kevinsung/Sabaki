@@ -5,7 +5,7 @@ import {
   parseVertex,
   parseCompressedVertices,
 } from '@sabaki/sgf'
-import {getId} from './utils.js'
+import {getId, vertexEquals} from './utils.js'
 import HexBoard from './hexboard.js'
 import {getGameType, GO, HEX} from './gametype.js'
 
@@ -425,6 +425,36 @@ export function getBoard(tree, id) {
   board.gameType = getGameType(tree)
 
   return board
+}
+
+// Detects a Hex swap (pie) node: a `W[reflected]` move plus the `AE` that
+// erases Black's opening stone, exactly as produced by Sabaki.swapHex().
+// Returns the swapping color ('W') or null. Used by EngineSyncer to send
+// the GTP `swap-pieces` token instead of replaying the position as
+// ordinary stones (which would require removing a stone, something GTP
+// can't express incrementally).
+export function getSwapColor(tree, id) {
+  let node = tree.get(id)
+  if (node == null || node.parentId == null) return null
+
+  let parentBoard = getBoard(tree, node.parentId)
+  if (!(parentBoard instanceof HexBoard) || !parentBoard.isSquare()) return null
+
+  let opening = parentBoard.getOpeningVertex()
+  if (opening == null) return null
+
+  let [x, y] = opening
+  let reflected = [y, x]
+
+  if (node.data.W == null || node.data.W.length !== 1) return null
+  if (!vertexEquals(parseVertex(node.data.W[0]), reflected)) return null
+
+  if (!vertexEquals(reflected, opening)) {
+    if (node.data.AE == null || node.data.AE.length !== 1) return null
+    if (!vertexEquals(parseVertex(node.data.AE[0]), opening)) return null
+  }
+
+  return 'W'
 }
 
 export function clearBoardCache() {

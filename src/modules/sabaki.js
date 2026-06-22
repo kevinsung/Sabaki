@@ -2209,6 +2209,66 @@ class Sabaki extends EventEmitter {
     if (coord == null) return
     coord = coord.toLowerCase().trim()
 
+    let currentTree = this.inferredState.gameTree
+    let currentTreePosition = this.state.treePosition
+    let positionMoved =
+      currentTree.root.id !== tree.root.id ||
+      currentTreePosition !== treePosition
+
+    if (['swap-pieces', 'swap'].includes(coord)) {
+      // Hex's swap (pie) rule, returned by the engine via the standard Hex
+      // GTP `swap-pieces` token. Encode it the same way a human-initiated
+      // swap is encoded (see swapHex()): White takes the diagonal
+      // reflection of Black's opening, and the opening stone is erased.
+      let swapBoard = gametree.getBoard(currentTree, treePosition)
+      let opening =
+        swapBoard.gameType === 'hex' && swapBoard.isSquare()
+          ? swapBoard.getOpeningVertex()
+          : null
+
+      if (opening == null) {
+        await dialog.showMessageBox(
+          t(
+            (p) =>
+              `${p.engine} tried to swap, but there’s no opening move to swap here.`,
+            {engine: syncer.engine.name},
+          ),
+          'error',
+        )
+        return
+      }
+
+      let [x, y] = opening
+      let reflected = [y, x]
+      let nodeData = {W: [sgf.stringifyVertex(reflected)]}
+      if (!helper.vertexEquals(reflected, [x, y])) {
+        nodeData.AE = [sgf.stringifyVertex([x, y])]
+      }
+
+      let newTreePosition
+      let newTree = currentTree.mutate((draft) => {
+        newTreePosition = draft.appendNode(treePosition, nodeData)
+      })
+
+      if (newTreePosition == null || !commit()) return
+
+      sound.playPachi()
+
+      this.setCurrentTreePosition(
+        newTree,
+        !positionMoved ? newTreePosition : currentTreePosition,
+      )
+
+      syncer.treePosition = newTreePosition
+
+      return {
+        tree: newTree,
+        treePosition: newTreePosition,
+        resign: false,
+        pass: false,
+      }
+    }
+
     if (coord === 'resign') {
       await dialog.showMessageBox(
         t((p) => `${p.engine} has resigned.`, {
@@ -2221,11 +2281,6 @@ class Sabaki extends EventEmitter {
     let vertex = ['resign', 'pass'].includes(coord)
       ? [-1, -1]
       : board.parseVertex(coord)
-    let currentTree = this.inferredState.gameTree
-    let currentTreePosition = this.state.treePosition
-    let positionMoved =
-      currentTree.root.id !== tree.root.id ||
-      currentTreePosition !== treePosition
     let resign = coord === 'resign'
     let {pass, capturing, suicide} = board.analyzeMove(sign, vertex)
 

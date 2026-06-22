@@ -90,6 +90,100 @@ describe('gametree', () => {
     })
   })
 
+  describe('getSwapColor', () => {
+    it('detects an off-diagonal swap node (reflection + AE erasing the opening)', () => {
+      let tree = gametree.new().mutate((draft) => {
+        draft.updateProperty(draft.root.id, 'GM', ['11'])
+        draft.updateProperty(draft.root.id, 'SZ', ['5'])
+
+        let openingId = draft.appendNode(draft.root.id, {B: ['bd']})
+        draft.appendNode(openingId, {W: ['db'], AE: ['bd']})
+      })
+
+      let swapId = [...tree.listNodes()].slice(-1)[0].id
+
+      assert.equal(gametree.getSwapColor(tree, swapId), 'W')
+    })
+
+    it('detects a swap node on the main diagonal, where no AE is needed', () => {
+      let tree = gametree.new().mutate((draft) => {
+        draft.updateProperty(draft.root.id, 'GM', ['11'])
+        draft.updateProperty(draft.root.id, 'SZ', ['5'])
+
+        let openingId = draft.appendNode(draft.root.id, {B: ['cc']})
+        draft.appendNode(openingId, {W: ['cc']})
+      })
+
+      let swapId = [...tree.listNodes()].slice(-1)[0].id
+
+      assert.equal(gametree.getSwapColor(tree, swapId), 'W')
+    })
+
+    it('returns null for an ordinary move', () => {
+      let tree = gametree.new().mutate((draft) => {
+        draft.updateProperty(draft.root.id, 'GM', ['11'])
+        draft.updateProperty(draft.root.id, 'SZ', ['5'])
+
+        let openingId = draft.appendNode(draft.root.id, {B: ['bd']})
+        draft.appendNode(openingId, {W: ['aa']})
+      })
+
+      let leafId = [...tree.listNodes()].slice(-1)[0].id
+
+      assert.equal(gametree.getSwapColor(tree, leafId), null)
+    })
+
+    it('returns null when AE doesn’t match the opening stone', () => {
+      let tree = gametree.new().mutate((draft) => {
+        draft.updateProperty(draft.root.id, 'GM', ['11'])
+        draft.updateProperty(draft.root.id, 'SZ', ['5'])
+
+        let openingId = draft.appendNode(draft.root.id, {B: ['bd']})
+        draft.appendNode(openingId, {W: ['db'], AE: ['aa']})
+      })
+
+      let leafId = [...tree.listNodes()].slice(-1)[0].id
+
+      assert.equal(gametree.getSwapColor(tree, leafId), null)
+    })
+
+    it('returns null for a Go board', () => {
+      let tree = gametree.new().mutate((draft) => {
+        draft.updateProperty(draft.root.id, 'SZ', ['5'])
+
+        let openingId = draft.appendNode(draft.root.id, {B: ['bd']})
+        draft.appendNode(openingId, {W: ['db'], AE: ['bd']})
+      })
+
+      let leafId = [...tree.listNodes()].slice(-1)[0].id
+
+      assert.equal(gametree.getSwapColor(tree, leafId), null)
+    })
+
+    it('returns null on a rectangular Hex board', () => {
+      let tree = gametree.new().mutate((draft) => {
+        draft.updateProperty(draft.root.id, 'GM', ['11'])
+        draft.updateProperty(draft.root.id, 'SZ', ['7:4'])
+
+        let openingId = draft.appendNode(draft.root.id, {B: ['bb']})
+        draft.appendNode(openingId, {W: ['bb']})
+      })
+
+      let leafId = [...tree.listNodes()].slice(-1)[0].id
+
+      assert.equal(gametree.getSwapColor(tree, leafId), null)
+    })
+
+    it('returns null for the root node', () => {
+      let tree = gametree.new().mutate((draft) => {
+        draft.updateProperty(draft.root.id, 'GM', ['11'])
+        draft.updateProperty(draft.root.id, 'SZ', ['5'])
+      })
+
+      assert.equal(gametree.getSwapColor(tree, tree.root.id), null)
+    })
+  })
+
   describe('setGameInfo', () => {
     it('writes GM[11] for gameType "hex"', () => {
       let tree = gametree.new()

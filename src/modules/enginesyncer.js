@@ -9,8 +9,8 @@ import {Controller, ControllerStateTracker, Command} from '@sabaki/gtp'
 import {parseCompressedVertices} from '@sabaki/sgf'
 
 import i18n from '../i18n.js'
-import {getBoard, getRootProperty} from './gametree.js'
-import {noop, equals} from './helper.js'
+import {getBoard, getRootProperty, getSwapColor} from './gametree.js'
+import {noop, equals, vertexEquals} from './helper.js'
 import {parseAnalysis} from './analysis.js'
 import HexBoard from './hexboard.js'
 
@@ -30,6 +30,32 @@ function parseVertex(coord, size) {
   let y = size - +coord.slice(1)
 
   return [x, y]
+}
+
+// Hex has no captures, so tracking engine state with a plain GoBoard would
+// silently apply Go's capture rules to Hex positions (and lacks
+// HexBoard-only methods like getOpeningVertex()).
+function newEngineBoard(gameType, width, height) {
+  return gameType === 'hex'
+    ? HexBoard.fromDimensions(width, height)
+    : newBoard(width, height)
+}
+
+// Applies the same diagonal reflection Sabaki.swapHex() uses to a HexBoard
+// that's tracking engine state, so it stays in sync after a `swap-pieces`
+// is sent or replayed. No-op if there's no single opening stone to reflect.
+function applyHexSwap(engineBoard) {
+  let opening = engineBoard.getOpeningVertex()
+  if (opening == null) return engineBoard
+
+  let [ox, oy] = opening
+  let reflected = [oy, ox]
+
+  let next = engineBoard.clone()
+  next.set(reflected, -1)
+  if (!vertexEquals(reflected, opening)) next.set(opening, 0)
+
+  return next
 }
 
 export default class EngineSyncer extends EventEmitter {
@@ -264,7 +290,7 @@ export default class EngineSyncer extends EventEmitter {
     // Replay
 
     let nodeBoard = getBoard(tree, id)
-    let engineBoard = newBoard(board.width, board.height)
+    let engineBoard = newEngineBoard(board.gameType, board.width, board.height)
     let history = []
     let boardSynced = true
     let nodes = [...tree.listNodesVertically(id, -1, {})].reverse()
@@ -301,6 +327,20 @@ export default class EngineSyncer extends EventEmitter {
         }
       }
 
+      // Hex's swap (pie) rule is encoded as a `W[reflected]` move plus an
+      // `AE` that erases Black's opening stone (see Sabaki.swapHex()).
+      // GTP can't express a stone removal as an addition, so rather than
+      // replay this as ordinary moves (which would desync and force a
+      // full rearrangement below), send the standard Hex GTP `swap-pieces`
+      // token and mirror the same reflection on our local engineBoard.
+      let swapColor = getSwapColor(tree, node.id)
+
+      if (swapColor != null) {
+        history.push({name: 'play', args: [swapColor, 'swap-pieces']})
+        engineBoard = applyHexSwap(engineBoard)
+        continue
+      }
+
       for (let prop of ['B', 'W', 'AB', 'AW']) {
         if (node.data[prop] == null || (placedHandicapStones && prop === 'AB'))
           continue
@@ -332,13 +372,18 @@ export default class EngineSyncer extends EventEmitter {
 
     if (!boardSynced) {
       history = [...this.state.history]
-      engineBoard = newBoard(board.width, board.height)
+      engineBoard = newEngineBoard(board.gameType, board.width, board.height)
 
       for (let command of this.state.history) {
         if (command.name === 'play') {
           let [color, coord] = command.args
-          let sign = color.toUpperCase() === 'B' ? 1 : -1
 
+          if (coord.toLowerCase() === 'swap-pieces') {
+            engineBoard = applyHexSwap(engineBoard)
+            continue
+          }
+
+          let sign = color.toUpperCase() === 'B' ? 1 : -1
           engineBoard = engineBoard.makeMove(
             sign,
             parseVertex(coord, boardsize),
@@ -370,7 +415,7 @@ export default class EngineSyncer extends EventEmitter {
 
     if (!boardSynced) {
       history = []
-      engineBoard = newBoard(board.width, board.height)
+      engineBoard = newEngineBoard(board.gameType, board.width, board.height)
 
       for (let x = 0; x < board.width; x++) {
         for (let y = 0; y < board.height; y++) {
