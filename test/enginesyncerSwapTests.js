@@ -96,5 +96,75 @@ describe('EngineSyncer swap rule', () => {
         await engineSyncer.stop()
       }
     })
+
+    it('never sends a `komi` command for Hex games', async function () {
+      this.timeout(10000)
+
+      let tree = new GameTree({getId})
+      let moveId
+
+      tree = tree.mutate((draft) => {
+        draft.updateProperty(draft.root.id, 'GM', ['11'])
+        draft.updateProperty(draft.root.id, 'SZ', ['5'])
+
+        moveId = draft.appendNode(draft.root.id, {B: ['B4']})
+      })
+
+      let engineSyncer = new EngineSyncer({
+        path: process.execPath,
+        args: enginePath,
+      })
+
+      try {
+        let commandNames = []
+        engineSyncer.controller.on('command-sent', ({command}) => {
+          commandNames.push(command.name)
+        })
+
+        await engineSyncer.sync(tree, moveId)
+
+        assert.ok(
+          !commandNames.includes('komi'),
+          `expected no 'komi' command, got: ${commandNames.join(', ')}`,
+        )
+      } finally {
+        await engineSyncer.stop()
+      }
+    })
+
+    it('sends a `komi` command for Go games', async function () {
+      this.timeout(10000)
+
+      let tree = new GameTree({getId})
+      let moveId
+
+      tree = tree.mutate((draft) => {
+        draft.updateProperty(draft.root.id, 'SZ', ['5'])
+        draft.updateProperty(draft.root.id, 'KM', ['6.5'])
+
+        moveId = draft.appendNode(draft.root.id, {B: ['bb']})
+      })
+
+      let engineSyncer = new EngineSyncer({
+        path: process.execPath,
+        args: enginePath,
+      })
+
+      try {
+        let commandNames = []
+        engineSyncer.controller.on('command-sent', ({command}) => {
+          commandNames.push(command.name)
+        })
+
+        await engineSyncer.sync(tree, moveId)
+
+        assert.ok(
+          commandNames.includes('komi'),
+          `expected a 'komi' command, got: ${commandNames.join(', ')}`,
+        )
+      } finally {
+        await engineSyncer.stop()
+      }
+    })
   })
 })

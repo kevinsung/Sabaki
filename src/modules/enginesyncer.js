@@ -291,7 +291,8 @@ export default class EngineSyncer extends EventEmitter {
       )
     }
 
-    let komi = +getRootProperty(tree, 'KM', 0)
+    // Hex has no notion of komi, so don't send the GTP `komi` command.
+    let komi = board.gameType === 'hex' ? null : +getRootProperty(tree, 'KM', 0)
     let boardsize = [board.width, board.height]
 
     // Replay
