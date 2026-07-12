@@ -390,6 +390,24 @@ test.describe('Hex', () => {
     expect(data.W[0].toUpperCase()).toBe('D2')
   })
 
+  test('shows column coordinate labels without skipping "I"', async ({
+    page,
+  }) => {
+    await newHexGame(page, 11)
+
+    await page.evaluate(() => {
+      window.__sabaki.setting.set('view.show_coordinates', true)
+      window.__sabaki.setting.set('view.coordinates_type', 'A1')
+    })
+    await waitForRender(page)
+
+    const labels = await page.locator('.shudanhex-coordx span').allInnerTexts()
+
+    // Go's board labels skip 'I'; Hex's don't, matching HexBoard's
+    // stringifyVertex/parseVertex (see hexboard.js).
+    expect(labels).toEqual(SGF_ALPHA.slice(0, 11).split(''))
+  })
+
   test('Info Drawer remembers the last chosen Hex board size when switching game type', async ({
     page,
   }) => {

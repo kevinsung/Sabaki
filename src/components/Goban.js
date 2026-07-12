@@ -13,6 +13,9 @@ import * as helper from '../modules/helper.js'
 const t = i18n.context('Goban')
 const setting = {get: (key) => window.sabaki.setting.get(key)}
 const alpha = 'ABCDEFGHJKLMNOPQRSTUVWXYZ'
+// Hex's SGF/GTP coordinates use all 26 letters for columns, unlike Go's
+// board labels, which skip 'I' -- see HexBoard's `alpha`.
+const hexAlpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 export default class Goban extends Component {
   constructor(props) {
@@ -278,6 +281,10 @@ export default class Goban extends Component {
       let rowNumber = (y) =>
         board.gameType === 'hex' ? y + 1 : board.height - y
 
+      // Hex columns don't skip 'I', matching HexBoard's stringifyVertex/
+      // parseVertex, unlike Go's board labels.
+      let columnLetter = (x) => (board.gameType === 'hex' ? hexAlpha : alpha)[x]
+
       if (coordinatesType === '1-1') {
         return [(x) => x + 1, (y) => y + 1]
       } else if (coordinatesType === 'relative') {
@@ -296,7 +303,7 @@ export default class Goban extends Component {
           (y) => relativeCoord(rowNumber(y), board.height),
         ]
       } else {
-        return [(x) => alpha[x], rowNumber] // Default
+        return [columnLetter, rowNumber] // Default
       }
     }
 
