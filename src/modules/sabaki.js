@@ -1171,10 +1171,11 @@ class Sabaki extends EventEmitter {
         return this.setMode('play')
       }
 
-      let nextVertex = sgf.parseVertex(
+      let board = gametree.getBoard(tree, treePosition)
+      let nextVertex = gametree.sgfParseVertex(
+        board,
         nextNode.data[nextNode.data.B != null ? 'B' : 'W'][0],
       )
-      let board = gametree.getBoard(tree, treePosition)
       if (!board.has(nextVertex)) {
         return this.setMode('play')
       }
@@ -1285,7 +1286,7 @@ class Sabaki extends EventEmitter {
     let nextTreePosition
     let newTree = tree.mutate((draft) => {
       nextTreePosition = draft.appendNode(treePosition, {
-        [color]: [sgf.stringifyVertex(vertex)],
+        [color]: [gametree.sgfStringifyVertex(board, vertex)],
       })
 
       if (!pass && board.gameType === 'hex') {
@@ -1362,7 +1363,7 @@ class Sabaki extends EventEmitter {
       generateEngineMove: this.state.engineGameOngoing == null,
     })
   }
-  
+
   // Hex's swap (pie) rule: rather than a true color swap, White's "swap"
   // is encoded as the diagonal reflection of Black's opening move
   // ([x,y] -> [y,x]), recoloring Black's stone to White in the process.
@@ -1392,9 +1393,9 @@ class Sabaki extends EventEmitter {
     let [x, y] = board.getOpeningVertex()
     let reflected = [y, x]
 
-    let nodeData = {W: [sgf.stringifyVertex(reflected)]}
+    let nodeData = {W: [gametree.sgfStringifyVertex(board, reflected)]}
     if (!helper.vertexEquals(reflected, [x, y])) {
-      nodeData.AE = [sgf.stringifyVertex([x, y])]
+      nodeData.AE = [gametree.sgfStringifyVertex(board, [x, y])]
     }
 
     let nextTreePosition
@@ -1477,7 +1478,7 @@ class Sabaki extends EventEmitter {
         let sign = tool === 'stone_1' ? 1 : -1
         let oldSign = board.get(vertex)
         let properties = ['AW', 'AE', 'AB']
-        let point = sgf.stringifyVertex(vertex)
+        let point = gametree.sgfStringifyVertex(board, vertex)
 
         for (let prop of properties) {
           if (node.data[prop] == null) continue
@@ -1490,7 +1491,9 @@ class Sabaki extends EventEmitter {
               prop,
               node.data[prop]
                 .map((value) =>
-                  sgf.parseCompressedVertices(value).map(sgf.stringifyVertex),
+                  gametree
+                    .sgfParseCompressedVertices(board, value)
+                    .map((v) => gametree.sgfStringifyVertex(board, v)),
                 )
                 .flat(),
             )
@@ -1540,7 +1543,9 @@ class Sabaki extends EventEmitter {
         draft.removeProperty(node.id, 'LN')
 
         for (let {v1, v2, type} of board.lines) {
-          let [p1, p2] = [v1, v2].map(sgf.stringifyVertex)
+          let [p1, p2] = [v1, v2].map((v) =>
+            gametree.sgfStringifyVertex(board, v),
+          )
           if (p1 === p2) continue
 
           draft.addToProperty(
@@ -1628,7 +1633,7 @@ class Sabaki extends EventEmitter {
             if (board.markers[y][x] == null) continue
 
             let prop = data[board.markers[y][x].type]
-            let value = sgf.stringifyVertex(v)
+            let value = gametree.sgfStringifyVertex(board, v)
             if (prop === 'LB') value += ':' + board.markers[y][x].label
 
             draft.addToProperty(node.id, prop, value)
@@ -2240,9 +2245,9 @@ class Sabaki extends EventEmitter {
 
       let [x, y] = opening
       let reflected = [y, x]
-      let nodeData = {W: [sgf.stringifyVertex(reflected)]}
+      let nodeData = {W: [gametree.sgfStringifyVertex(swapBoard, reflected)]}
       if (!helper.vertexEquals(reflected, [x, y])) {
-        nodeData.AE = [sgf.stringifyVertex([x, y])]
+        nodeData.AE = [gametree.sgfStringifyVertex(swapBoard, [x, y])]
       }
 
       let newTreePosition
@@ -2287,7 +2292,7 @@ class Sabaki extends EventEmitter {
     let newTreePosition
     let newTree = currentTree.mutate((draft) => {
       newTreePosition = draft.appendNode(treePosition, {
-        [color]: [sgf.stringifyVertex(vertex)],
+        [color]: [gametree.sgfStringifyVertex(board, vertex)],
       })
 
       if (coord === 'resign') {
@@ -2523,7 +2528,10 @@ class Sabaki extends EventEmitter {
 
   async findMove(step, {vertex = null, text = ''}) {
     if (vertex == null && text.trim() === '') return
-    let point = vertex ? sgf.stringifyVertex(vertex) : null
+
+    let {gameTrees, gameIndex, treePosition} = this.state
+    let board = gametree.getBoard(gameTrees[gameIndex], treePosition)
+    let point = vertex ? gametree.sgfStringifyVertex(board, vertex) : null
 
     await this.findPosition(step, (node) => {
       let cond = (prop, value) =>
@@ -2794,7 +2802,7 @@ class Sabaki extends EventEmitter {
           draft.addToProperty(
             treePosition,
             sign > 0 ? 'AB' : 'AW',
-            sgf.stringifyVertex([x, y]),
+            gametree.sgfStringifyVertex(board, [x, y]),
           )
         }
       }
@@ -3140,6 +3148,7 @@ class Sabaki extends EventEmitter {
     let t = i18n.context('menu.variation')
     let {treePosition} = this.state
     let tree = this.inferredState.gameTree
+    let board = gametree.getBoard(tree, treePosition)
 
     helper.popupMenu(
       [
@@ -3166,7 +3175,7 @@ class Sabaki extends EventEmitter {
                 Object.assign(
                   {
                     [i % 2 === 0 ? color : opponent]: [
-                      sgf.stringifyVertex(vertex),
+                      gametree.sgfStringifyVertex(board, vertex),
                     ],
                   },
                   i === 0 ? startNodeProperties : {},

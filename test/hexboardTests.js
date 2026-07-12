@@ -289,6 +289,45 @@ describe('hexboard', () => {
       assert.deepEqual(board.parseVertex('A1'), [0, 0])
       assert.deepEqual(board.parseVertex('A11'), [0, 10])
     })
+
+    it('does not skip the letter I, unlike Go board labels', () => {
+      let board = HexBoard.fromDimensions(11)
+
+      assert.equal(board.stringifyVertex([8, 0]), 'I1')
+      assert.deepEqual(board.parseVertex('I1'), [8, 0])
+    })
+
+    it('parses column letters case-insensitively, per the Hex SGF spec', () => {
+      let board = HexBoard.fromDimensions(11)
+
+      assert.deepEqual(board.parseVertex('d8'), [3, 7])
+    })
+  })
+
+  describe('swap', () => {
+    it('reflects stones along the long diagonal and inverts their color', () => {
+      let board = HexBoard.fromDimensions(5).makeMove(1, [2, 1])
+      let swapped = board.swap()
+
+      assert.equal(swapped.get([1, 2]), -1)
+      assert.equal(swapped.get([2, 1]), 0)
+    })
+
+    it('swaps width and height on a rectangular board', () => {
+      let board = HexBoard.fromDimensions(7, 4).makeMove(1, [5, 2])
+      let swapped = board.swap()
+
+      assert.equal(swapped.width, 4)
+      assert.equal(swapped.height, 7)
+      assert.equal(swapped.get([2, 5]), -1)
+    })
+
+    it('does not mutate the original board', () => {
+      let board = HexBoard.fromDimensions(5).makeMove(1, [2, 1])
+      board.swap()
+
+      assert.equal(board.get([2, 1]), 1)
+    })
   })
 
   describe('go-board interface parity', () => {

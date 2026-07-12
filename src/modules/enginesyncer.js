@@ -6,10 +6,14 @@ import {v4 as uuid} from 'uuid'
 
 import {fromDimensions as newBoard} from '@sabaki/go-board'
 import {Controller, ControllerStateTracker, Command} from '@sabaki/gtp'
-import {parseCompressedVertices} from '@sabaki/sgf'
 
 import i18n from '../i18n.js'
-import {getBoard, getRootProperty, getSwapColor} from './gametree.js'
+import {
+  getBoard,
+  getRootProperty,
+  getSwapColor,
+  sgfParseCompressedVertices,
+} from './gametree.js'
 import {noop, equals, vertexEquals} from './helper.js'
 import {parseAnalysis} from './analysis.js'
 import HexBoard from './hexboard.js'
@@ -22,14 +26,17 @@ const setting = {
 const alpha = 'ABCDEFGHJKLMNOPQRSTUVWXYZ'
 const quitTimeout = setting.get('gtp.engine_quit_timeout')
 
-function parseVertex(coord, size) {
+// GTP coordinates are letter+number for both Go and Hex, but the two
+// disagree on the letter/flip convention (Go's GTP alphabet skips 'I' and
+// numbers rows from the bottom; Hex's SGF/GTP coordinates don't skip 'I'
+// and number rows from the top -- see HexBoard.parseVertex). Each board
+// class already implements its own convention correctly, so delegate to
+// whichever board instance is tracking this engine's position.
+function parseVertex(coord, engineBoard) {
   if (coord == null || coord === 'resign') return null
   if (coord === 'pass') return [-1, -1]
 
-  let x = alpha.indexOf(coord[0].toUpperCase())
-  let y = size - +coord.slice(1)
-
-  return [x, y]
+  return engineBoard.parseVertex(coord)
 }
 
 // Hex has no captures, so tracking engine state with a plain GoBoard would
@@ -307,7 +314,11 @@ export default class EngineSyncer extends EventEmitter {
         // Place handicap stones
 
         let vertices = []
-          .concat(...node.data.AB.map(parseCompressedVertices))
+          .concat(
+            ...node.data.AB.map((value) =>
+              sgfParseCompressedVertices(board, value),
+            ),
+          )
           .sort()
         let coords = vertices
           .map((v) => board.stringifyVertex(v))
@@ -348,7 +359,9 @@ export default class EngineSyncer extends EventEmitter {
         let color = prop.slice(-1)
         let sign = color === 'B' ? 1 : -1
         let vertices = [].concat(
-          ...node.data[prop].map(parseCompressedVertices),
+          ...node.data[prop].map((value) =>
+            sgfParseCompressedVertices(board, value),
+          ),
         )
 
         for (let vertex of vertices) {
@@ -386,11 +399,14 @@ export default class EngineSyncer extends EventEmitter {
           let sign = color.toUpperCase() === 'B' ? 1 : -1
           engineBoard = engineBoard.makeMove(
             sign,
-            parseVertex(coord, boardsize),
+            parseVertex(coord, engineBoard),
           )
         } else if (command.name === 'set_free_handicap') {
           for (let coord of command.args) {
-            engineBoard = engineBoard.makeMove(1, parseVertex(coord, boardsize))
+            engineBoard = engineBoard.makeMove(
+              1,
+              parseVertex(coord, engineBoard),
+            )
           }
         }
       }

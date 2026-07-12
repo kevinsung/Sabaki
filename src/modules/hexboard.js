@@ -7,7 +7,10 @@
 // Black connects the top (y=0) and bottom (y=height-1) edges.
 // White connects the left (x=0) and right (x=width-1) edges.
 
-const alpha = 'ABCDEFGHJKLMNOPQRSTUVWXYZ'
+// The Hex SGF spec (https://www.red-bean.com/sgf/hex.html) uses all 26
+// letters for columns (unlike Go's board labels, which skip 'I' to avoid
+// confusion with '1'), matching the ShudanHex renderer.
+const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 function vertexEquals([x1, y1], [x2, y2]) {
   return x1 === x2 && y1 === y2
@@ -193,6 +196,28 @@ export default class HexBoard {
     let v = [x, y]
 
     return this.has(v) ? v : [-1, -1]
+  }
+
+  // Reflects every stone along the long diagonal and inverts its color,
+  // implementing the 'swap-pieces' SGF move (see
+  // https://www.red-bean.com/sgf/hex.html#types): "all of Black's pieces
+  // are coloured White, and White's pieces are coloured Black. Then the
+  // entire board is reflected in the long diagonal axis." On a WxH board,
+  // [x, y] maps to [y, x] on the resulting HxW board. Used when reading
+  // Hex SGF files that encode the pie rule with the literal 'swap-pieces'
+  // keyword, as opposed to Sabaki's own reflected-move encoding (see
+  // Sabaki.swapHex).
+  swap() {
+    let result = HexBoard.fromDimensions(this.height, this.width)
+
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        let sign = this.get([x, y])
+        if (sign !== 0) result.set([y, x], -sign)
+      }
+    }
+
+    return result
   }
 
   // Returns 1 if Black has connected top to bottom, -1 if White has

@@ -11,6 +11,57 @@ import {getGameType, GO, HEX} from './gametype.js'
 
 const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
+// Go SGF property values use a two-letter code (e.g. 'dd') that's distinct
+// from the letter+number coordinates used for GTP/display. Hex SGF values
+// (https://www.red-bean.com/sgf/hex.html#types) *are* letter+number
+// coordinates (e.g. 'd8'), which HexBoard's own parseVertex/stringifyVertex
+// already implement, so property-value (de)serialization dispatches on
+// board type instead of using the Go-only sgf.parseVertex/stringifyVertex.
+
+export function sgfParseVertex(board, coord) {
+  return board instanceof HexBoard
+    ? board.parseVertex(coord)
+    : parseVertex(coord)
+}
+
+export function sgfStringifyVertex(board, vertex) {
+  return board instanceof HexBoard
+    ? board.stringifyVertex(vertex)
+    : stringifyVertex(vertex)
+}
+
+export function sgfParseCompressedVertices(board, value) {
+  if (!(board instanceof HexBoard)) return parseCompressedVertices(value)
+
+  let colon = value.indexOf(':')
+  if (colon < 0) return [board.parseVertex(value)]
+
+  let [v1, v2] = [value.slice(0, colon), value.slice(colon + 1)].map((c) =>
+    board.parseVertex(c),
+  )
+  let vertices = []
+
+  for (let i = Math.min(v1[0], v2[0]); i <= Math.max(v1[0], v2[0]); i++) {
+    for (let j = Math.min(v1[1], v2[1]); j <= Math.max(v1[1], v2[1]); j++) {
+      vertices.push([i, j])
+    }
+  }
+
+  return vertices
+}
+
+// Recognizes the special Hex move keywords defined by the spec
+// (https://www.red-bean.com/sgf/hex.html#types): 'pass', 'resign', and
+// 'forfeit' place no stone (already handled gracefully, since parsing them
+// as a coordinate yields an out-of-board vertex); 'swap-pieces' mutates the
+// whole board and is handled explicitly below. 'swap-sides' only reassigns
+// which real-world player is Black/White going forward, a notion Sabaki's
+// board model (which ties sign strictly to the B/W property) doesn't
+// represent, so it's treated as a no-op move, like pass.
+export function isHexSwapPieces(value) {
+  return typeof value === 'string' && value.toLowerCase() === 'swap-pieces'
+}
+
 let boardCache = {}
 
 function nodeMerger(node, data) {
@@ -265,7 +316,15 @@ export function getBoard(tree, id) {
     for (let prop in propData) {
       if (node.data[prop] == null) continue
 
-      vertex = parseVertex(node.data[prop][0])
+      if (isHexSwapPieces(node.data[prop][0])) {
+        // External Hex SGF may encode the pie rule with the literal
+        // 'swap-pieces' keyword instead of Sabaki's own reflected-move
+        // encoding (see Sabaki.swapHex / getSwapColor below).
+        board = baseboard.swap()
+        break
+      }
+
+      vertex = sgfParseVertex(baseboard, node.data[prop][0])
       board = baseboard.makeMove(propData[prop], vertex)
       board.currentVertex = vertex
 
@@ -282,7 +341,7 @@ export function getBoard(tree, id) {
       if (node.data[prop] == null) continue
 
       for (let value of node.data[prop]) {
-        for (let vertex of parseCompressedVertices(value)) {
+        for (let vertex of sgfParseCompressedVertices(board, value)) {
           if (!board.has(vertex)) continue
           board.set(vertex, propData[prop])
         }
@@ -328,7 +387,7 @@ export function getBoard(tree, id) {
       if (node.data[prop] == null) continue
 
       for (let value of node.data[prop]) {
-        for (let [x, y] of parseCompressedVertices(value)) {
+        for (let [x, y] of sgfParseCompressedVertices(board, value)) {
           if (board.markers[y] == null) continue
           board.markers[y][x] = {type: propData[prop]}
         }
@@ -340,7 +399,7 @@ export function getBoard(tree, id) {
         let sep = composed.indexOf(':')
         let point = composed.slice(0, sep)
         let label = composed.slice(sep + 1)
-        let [x, y] = parseVertex(point)
+        let [x, y] = sgfParseVertex(board, point)
 
         if (board.markers[y] == null) continue
         board.markers[y][x] = {type: 'label', label}
@@ -352,7 +411,7 @@ export function getBoard(tree, id) {
         let point = node.data.L[i]
         let label = alpha[i]
         if (label == null) return
-        let [x, y] = parseVertex(point)
+        let [x, y] = sgfParseVertex(board, point)
 
         if (board.markers[y] == null) continue
         board.markers[y][x] = {type: 'label', label}
@@ -365,7 +424,7 @@ export function getBoard(tree, id) {
       for (let composed of node.data[type]) {
         let sep = composed.indexOf(':')
         let [v1, v2] = [composed.slice(0, sep), composed.slice(sep + 1)].map(
-          parseVertex,
+          (coord) => sgfParseVertex(board, coord),
         )
 
         board.lines.push({v1, v2, type: type === 'AR' ? 'arrow' : 'line'})
@@ -378,10 +437,10 @@ export function getBoard(tree, id) {
       let v, sign
 
       if (node.data.B != null) {
-        v = parseVertex(node.data.B[0])
+        v = sgfParseVertex(board, node.data.B[0])
         sign = 1
       } else if (node.data.W != null) {
-        v = parseVertex(node.data.W[0])
+        v = sgfParseVertex(board, node.data.W[0])
         sign = -1
       } else {
         return
@@ -427,12 +486,13 @@ export function getBoard(tree, id) {
   return board
 }
 
-// Detects a Hex swap (pie) node: a `W[reflected]` move plus the `AE` that
-// erases Black's opening stone, exactly as produced by Sabaki.swapHex().
-// Returns the swapping color ('W') or null. Used by EngineSyncer to send
-// the GTP `swap-pieces` token instead of replaying the position as
-// ordinary stones (which would require removing a stone, something GTP
-// can't express incrementally).
+// Detects a Hex swap (pie) node: either a `W[reflected]` move plus the `AE`
+// that erases Black's opening stone (Sabaki's own encoding, produced by
+// Sabaki.swapHex()), or the literal `W[swap-pieces]` keyword defined by the
+// SGF spec (produced by other Hex tools). Returns the swapping color ('W')
+// or null. Used by EngineSyncer to send the GTP `swap-pieces` token instead
+// of replaying the position as ordinary stones (which would require
+// removing a stone, something GTP can't express incrementally).
 export function getSwapColor(tree, id) {
   let node = tree.get(id)
   if (node == null || node.parentId == null) return null
@@ -443,15 +503,21 @@ export function getSwapColor(tree, id) {
   let opening = parentBoard.getOpeningVertex()
   if (opening == null) return null
 
+  if (node.data.W != null && node.data.W.length === 1) {
+    if (isHexSwapPieces(node.data.W[0])) return 'W'
+  }
+
   let [x, y] = opening
   let reflected = [y, x]
 
   if (node.data.W == null || node.data.W.length !== 1) return null
-  if (!vertexEquals(parseVertex(node.data.W[0]), reflected)) return null
+  if (!vertexEquals(sgfParseVertex(parentBoard, node.data.W[0]), reflected))
+    return null
 
   if (!vertexEquals(reflected, opening)) {
     if (node.data.AE == null || node.data.AE.length !== 1) return null
-    if (!vertexEquals(parseVertex(node.data.AE[0]), opening)) return null
+    if (!vertexEquals(sgfParseVertex(parentBoard, node.data.AE[0]), opening))
+      return null
   }
 
   return 'W'

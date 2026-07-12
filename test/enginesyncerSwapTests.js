@@ -41,8 +41,9 @@ describe('EngineSyncer swap rule', () => {
     it('sends a Hex swap as the GTP `swap-pieces` token, not replayed stones', async function () {
       this.timeout(10000)
 
-      // Off-diagonal swap: Black opens at 'bd', White's swap reflects it to
-      // 'db' and erases 'bd' via AE -- exactly what Sabaki.swapHex() produces.
+      // Off-diagonal swap: Black opens at vertex [1,3] (Hex SGF 'B4'),
+      // White's swap reflects it to [3,1] ('D2') and erases 'B4' via AE --
+      // exactly what Sabaki.swapHex() produces.
       let tree = new GameTree({getId})
       let openingId, swapId
 
@@ -50,8 +51,8 @@ describe('EngineSyncer swap rule', () => {
         draft.updateProperty(draft.root.id, 'GM', ['11'])
         draft.updateProperty(draft.root.id, 'SZ', ['5'])
 
-        openingId = draft.appendNode(draft.root.id, {B: ['bd']})
-        swapId = draft.appendNode(openingId, {W: ['db'], AE: ['bd']})
+        openingId = draft.appendNode(draft.root.id, {B: ['B4']})
+        swapId = draft.appendNode(openingId, {W: ['D2'], AE: ['B4']})
       })
 
       let engineSyncer = new EngineSyncer({
@@ -74,8 +75,8 @@ describe('EngineSyncer swap rule', () => {
           ]),
           [
             // Black's opening, sent as an ordinary stone in GTP coords
-            // ('bd' is SGF for vertex [1,3], which HexBoard stringifies as
-            // 'B4': row 1 at the top).
+            // (SGF 'B4' is vertex [1,3]; GTP coords are the same
+            // letter+number format for Hex, so it's sent unchanged).
             ['b', 'b4'],
             // The swap, sent as the standard Hex GTP token instead of a
             // second ordinary stone (which would require also removing

@@ -1,6 +1,6 @@
 const {expect} = require('@playwright/test')
 const {test} = require('./fixtures/electron-app')
-const {waitForRender} = require('./helpers')
+const {waitForRender, loadSgfStringAndWait} = require('./helpers')
 
 // Exercises the Hex game type end-to-end: creating a new Hex game (the same
 // gametree.setGameInfo() code path the Info Drawer's "Game" selector
@@ -8,12 +8,14 @@ const {waitForRender} = require('./helpers')
 // alternating stones with no captures, the swap (pie) rule on move 2, and
 // win detection via top-bottom (Black) / left-right (White) connection.
 
-// @sabaki/sgf encodes vertices as two characters from this alphabet,
-// 0-indexed, x then y (e.g. "cb" -> [2, 1]).
-const SGF_ALPHA = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+// Hex SGF values are letter+number, not Go's two-letter code (see
+// https://www.red-bean.com/sgf/hex.html#types): a column letter followed by
+// a 1-based row number, e.g. "d2" -> [3, 1]. Column labels don't skip 'I'
+// and are case-insensitive (matching HexBoard.parseVertex).
+const SGF_ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 function decodeSgfVertex(coord) {
-  return [SGF_ALPHA.indexOf(coord[0]), SGF_ALPHA.indexOf(coord[1])]
+  return [SGF_ALPHA.indexOf(coord[0].toUpperCase()), +coord.slice(1) - 1]
 }
 
 async function newHexGame(page, size) {
@@ -343,6 +345,49 @@ test.describe('Hex', () => {
       )
       .count()
     expect(hasStone).toBe(0)
+  })
+
+  test('loads an externally authored Hex SGF file with letter+number coordinates', async ({
+    page,
+  }) => {
+    // As produced by e.g. PlayHex (see the untracked hexplorer.sgf sample):
+    // moves are letter+number ('d8'), not Go's two-letter SGF code.
+    const SGF =
+      '(;FF[4]AP[PlayHex:1.0.0]GM[11]SZ[11];B[d8];W[h4];B[g4];W[h2];B[j2];W[i3])'
+
+    await loadSgfStringAndWait(page, SGF)
+    await waitForRender(page)
+
+    const stoneAt = (x, y) =>
+      page
+        .locator(
+          `.shudanhex-vertex[data-x="${x}"][data-y="${y}"].shudanhex-sign_1, ` +
+            `.shudanhex-vertex[data-x="${x}"][data-y="${y}"].shudanhex-sign_-1`,
+        )
+        .count()
+
+    // d8 (Black), h4 (White), g4 (Black), h2 (White), j2 (Black), i3
+    // (White) -- 'i' is a valid column, not skipped.
+    expect(await stoneAt(3, 7)).toBe(1)
+    expect(await stoneAt(7, 3)).toBe(1)
+    expect(await stoneAt(6, 3)).toBe(1)
+    expect(await stoneAt(7, 1)).toBe(1)
+    expect(await stoneAt(9, 1)).toBe(1)
+    expect(await stoneAt(8, 2)).toBe(1)
+  })
+
+  test('saves a swap move using the letter+number Hex SGF coordinate format', async ({
+    page,
+  }) => {
+    await newHexGame(page, 5)
+    await makeMove(page, [1, 3]) // non-diagonal opening (x !== y)
+    await page.evaluate(() => window.__sabaki.swapHex())
+    await waitForRender(page)
+
+    const data = await currentNodeData(page)
+    expect(data.W).toBeTruthy()
+    // [1,3] reflected is [3,1], written as Hex SGF 'D2', not Go's 'db'.
+    expect(data.W[0].toUpperCase()).toBe('D2')
   })
 
   test('Info Drawer remembers the last chosen Hex board size when switching game type', async ({
